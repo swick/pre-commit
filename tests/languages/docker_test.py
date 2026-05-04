@@ -201,6 +201,10 @@ def _avoid_cache():
             docker,
             '_is_rootless',
             docker._is_rootless.__wrapped__,
+    ), mock.patch.object(
+            docker,
+            '_get_container_cmd',
+            docker._get_container_cmd.__wrapped__,
     ):
         yield
 
@@ -260,6 +264,26 @@ def test_get_container_id():
         assert docker._get_container_id() == CONTAINER_ID
     with _mock_open(PODMAN_CGROUPS_V2_MOUNTINFO_EXAMPLE):
         assert docker._get_container_id() == CONTAINER_ID
+
+
+def test_get_container_cmd_prefers_docker():
+    with mock.patch('shutil.which', side_effect=lambda cmd: cmd):
+        assert docker._get_container_cmd() == 'docker'
+
+
+def test_get_container_cmd_falls_back_to_podman():
+    def which(cmd):
+        return cmd if cmd == 'podman' else None
+
+    with mock.patch('shutil.which', side_effect=which):
+        assert docker._get_container_cmd() == 'podman'
+
+
+def test_get_container_cmd_raises_when_neither_available():
+    with mock.patch('shutil.which', return_value=None):
+        with pytest.raises(SystemExit) as excinfo:
+            docker._get_container_cmd()
+        assert 'docker (or podman) is required' in str(excinfo.value)
 
 
 def test_get_docker_path_not_in_docker_returns_same():
